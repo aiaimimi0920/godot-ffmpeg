@@ -295,6 +295,20 @@ Error FFmpegVideoStreamPlayback::load(Ref<FileAccess> p_file_access) {
 	return OK;
 }
 
+void FFmpegVideoStreamPlayback::load_from_url(const String &p_path) {
+	decoder = Ref<VideoDecoder>(memnew(VideoDecoder(p_path)));
+
+	decoder->start_decoding();
+	Vector2i size = decoder->get_size();
+	if (decoder->get_decoder_state() != VideoDecoder::FAULTED) {
+#ifdef GDEXTENSION
+		texture = ImageTexture::create_from_image(Image::create(size.x, size.y, false, Image::FORMAT_RGBA8));
+#else
+		texture = ImageTexture::create_from_image(Image::create_empty(size.x, size.y, false, Image::FORMAT_RGBA8));
+#endif
+	}
+}
+
 bool FFmpegVideoStreamPlayback::is_paused_internal() const {
 	return paused;
 }

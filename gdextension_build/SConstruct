@@ -73,7 +73,7 @@ sources = Glob("../*.cpp")
 sources.extend(Glob("*.cpp"))
 ffmpeg_path = env["ffmpeg_path"]
 
-ffmpeg_libs = ["avcodec", "avfilter", "avformat", "avutil", "swresample", "swscale"]
+ffmpeg_libs = ["avcodec", "avdevice", "avfilter", "avformat", "avutil", "swresample", "swscale"]
 
 env.Append(LIBS=ffmpeg_libs)
 env.Prepend(CPPPATH=f"{ffmpeg_path}/include")

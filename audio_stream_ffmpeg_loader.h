@@ -1,5 +1,5 @@
 /**************************************************************************/
-/*  video_stream_ffmpeg_loader.h                                          */
+/*  audio_stream_ffmpeg_loader.h                                          */
 /**************************************************************************/
 /*                         This file is part of:                          */
 /*                             EIRTeam.FFmpeg                             */
@@ -28,15 +28,14 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-#ifndef VIDEO_STREAM_FFMPEG_LOADER_H
-#define VIDEO_STREAM_FFMPEG_LOADER_H
+#ifndef AUDIO_STREAM_FFMPEG_LOADER_H
+#define AUDIO_STREAM_FFMPEG_LOADER_H
 
 #ifdef GDEXTENSION
 
 // Headers for building as GDExtension plug-in.
 #include <godot_cpp/classes/resource.hpp>
 #include <godot_cpp/classes/resource_format_loader.hpp>
-#include "gdextension_build/gdex_print.h"
 
 using namespace godot;
 
@@ -48,8 +47,8 @@ using namespace godot;
 
 #include "gdextension_build/func_redirect.h"
 
-class VideoStreamFFMpegLoader : public ResourceFormatLoader {
-	GDCLASS(VideoStreamFFMpegLoader, ResourceFormatLoader);
+class AudioStreamFFMpegLoader : public ResourceFormatLoader {
+	GDCLASS(AudioStreamFFMpegLoader, ResourceFormatLoader);
 	PackedStringArray recognized_extension_cache;
 
 private:
@@ -74,4 +73,4 @@ public:
 #endif
 };
 
-#endif // VIDEO_STREAM_FFMPEG_LOADER_H
+#endif // AUDIO_STREAM_FFMPEG_LOADER_H

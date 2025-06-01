@@ -8,12 +8,13 @@ import SCons
 FFMPEG_DOWNLOAD_WIN64 = "https://github.com/EIRTeam/FFmpeg-Builds/releases/download/autobuild-2023-07-24-08-52/ffmpeg-N-111611-g5b11ee9429-win64-lgpl-godot.tar.xz"
 FFMPEG_DOWNLOAD_LINUX64 = "https://github.com/EIRTeam/FFmpeg-Builds/releases/download/autobuild-2023-07-24-08-52/ffmpeg-N-111611-g5b11ee9429-linux64-lgpl-godot.tar.xz"
 ffmpeg_versions = {
-    "avcodec": "60",
-    "avfilter": "9",
-    "avformat": "60",
-    "avutil": "58",
-    "swresample": "4",
-    "swscale": "7",
+    "avcodec": "62",
+    # "avdevice": "62",
+    "avfilter": "11",
+    "avformat": "62",
+    "avutil": "60",
+    "swresample": "6",
+    "swscale": "9",
 }
 
 

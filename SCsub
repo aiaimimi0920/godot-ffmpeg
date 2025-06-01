@@ -26,7 +26,8 @@ ffmpeg_path = env["ffmpeg_path"]
 env_ffmpeg.Prepend(CPPPATH=f"{ffmpeg_path}/include")
 env.Append(LIBPATH=[f"{ffmpeg_path}/lib"])
 
-ffmpeg_libs = ["avcodec", "avfilter", "avformat", "avutil", "swresample", "swscale"]
+ffmpeg_libs = ["avcodec", "avdevice", "avfilter", "avformat", "avutil", "swresample", "swscale"]
+# ffmpeg_libs = ["avcodec", "avfilter", "avformat", "avutil", "swresample", "swscale"]
 
 if env.msvc:
     # MSVC: Think Different(tm)

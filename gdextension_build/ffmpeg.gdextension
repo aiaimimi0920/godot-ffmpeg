@@ -1,7 +1,7 @@
 [configuration]
 
 entry_symbol = "ffmpeg_init"
-compatibility_minimum = 4.1
+compatibility_minimum = 4.4
 
 [libraries]
 windows.debug.x86_64 = "res://addons/ffmpeg/win64/libgdffmpeg.windows.template_debug.x86_64.dll"
@@ -16,20 +16,21 @@ macos.release = "res://addons/ffmpeg/macos/libgdffmpeg.macos.template_release.fr
 [dependencies]
 
 windows.x86_64 = 
-    {"res://addons/ffmpeg/win64/avcodec-60.dll": "",
-    "res://addons/ffmpeg/win64/avfilter-9.dll": "",
-    "res://addons/ffmpeg/win64/avformat-60.dll": "",
-    "res://addons/ffmpeg/win64/avutil-58.dll": "",
-    "res://addons/ffmpeg/win64/swresample-4.dll": "",
-    "res://addons/ffmpeg/win64/swscale-7.dll": ""}
+    {"res://addons/ffmpeg/win64/avcodec-62.dll": "",
+    "res://addons/ffmpeg/win64/avdevice-62.dll": "",
+    "res://addons/ffmpeg/win64/avfilter-11.dll": "",
+    "res://addons/ffmpeg/win64/avformat-62.dll": "",
+    "res://addons/ffmpeg/win64/avutil-60.dll": "",
+    "res://addons/ffmpeg/win64/swresample-6.dll": "",
+    "res://addons/ffmpeg/win64/swscale-9.dll": ""}
 
 linux.x86_64 = 
-    {"res://addons/ffmpeg/linux64/libavcodec.so.60": "",
-    "res://addons/ffmpeg/linux64/libavfilter.so.9": "",
-    "res://addons/ffmpeg/linux64/libavformat.so.60": "",
-    "res://addons/ffmpeg/linux64/libavutil.so.58": "",
-    "res://addons/ffmpeg/linux64/libswresample.so.4": "",
-    "res://addons/ffmpeg/linux64/libswscale.so.7": ""}
+    {"res://addons/ffmpeg/linux64/libavcodec.so.62": "",
+    "res://addons/ffmpeg/linux64/libavfilter.so.11": "",
+    "res://addons/ffmpeg/linux64/libavformat.so.62": "",
+    "res://addons/ffmpeg/linux64/libavutil.so.60": "",
+    "res://addons/ffmpeg/linux64/libswresample.so.6": "",
+    "res://addons/ffmpeg/linux64/libswscale.so.9": ""}
 
 android.arm64 =
     {

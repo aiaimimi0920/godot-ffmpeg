@@ -29,6 +29,7 @@
 /**************************************************************************/
 
 #include "video_decoder.h"
+#include "audio_decoder.h"
 #include "ffmpeg_frame.h"
 
 #include "libavcodec/codec.h"
@@ -47,6 +48,10 @@ extern "C" {
 #include "libavformat/avio.h"
 }
 
+#include <chrono>
+
+using namespace std::chrono;
+
 const int MAX_PENDING_FRAMES = 3;
 
 bool is_hardware_pixel_format(AVPixelFormat p_fmt) {
@@ -64,9 +69,11 @@ bool is_hardware_pixel_format(AVPixelFormat p_fmt) {
 		case AV_PIX_FMT_MEDIACODEC:
 		case AV_PIX_FMT_VULKAN:
 		case AV_PIX_FMT_MMAL:
-		case AV_PIX_FMT_XVMC: {
+		#if FF_API_XVMC
+  		case AV_PIX_FMT_XVMC: {
 			return true;
 		}
+		#endif
 		default: {
 			return false;
 		}
@@ -116,20 +123,92 @@ int64_t VideoDecoder::_stream_seek_callback(void *p_opaque, int64_t p_offset, in
 	return decoder->video_file->get_position();
 }
 
+// Ok I know this is ugly but this provides a timeout to the asynch connection
+auto ms = duration_cast<milliseconds>(
+            system_clock::now().time_since_epoch()).count();
+
+static int interrupt_cb(void *ctx) 
+{ 
+    bool* ok = reinterpret_cast<bool*>(ctx);
+    if(!*ok)
+    {
+        auto cur = duration_cast<milliseconds>(
+            system_clock::now().time_since_epoch()).count();
+        if (cur-ms > 3000)
+        {
+            return 1;
+        }
+    }
+    
+// do something 
+    return 0;
+} 
+
+static bool ok = false;
+static const AVIOInterruptCB int_cb = { interrupt_cb, NULL }; 
+
+
 void VideoDecoder::prepare_decoding() {
-	avio_seek(io_context, 0, SEEK_SET);
-	if (!io_context) {
-		const int context_buffer_size = 4096;
-		unsigned char *context_buffer = (unsigned char *)av_malloc(context_buffer_size);
-		io_context = avio_alloc_context(context_buffer, context_buffer_size, 0, this, &VideoDecoder::_read_packet_callback, nullptr, &VideoDecoder::_stream_seek_callback);
+	int open_input_res;
+	if(!video_file.is_null()){
+		avio_seek(io_context, 0, SEEK_SET);
+		if (!io_context) {
+			const int context_buffer_size = 4096;
+			unsigned char *context_buffer = (unsigned char *)av_malloc(context_buffer_size);
+			io_context = avio_alloc_context(context_buffer, context_buffer_size, 0, this, &VideoDecoder::_read_packet_callback, nullptr, &VideoDecoder::_stream_seek_callback);
+		}
+
+		format_context = avformat_alloc_context();
+		format_context->pb = io_context;
+		format_context->flags |= AVFMT_FLAG_GENPTS;
+		format_context->video_codec = forced_video_codec;
+		AVDictionary* opts = nullptr;
+		av_dict_set(&opts, "buffer_size", "655360", 0);
+		av_dict_set(&opts, "hwaccel", "auto", 0);
+		av_dict_set(&opts, "movflags", "faststart", 0);
+		av_dict_set(&opts, "refcounted_frames", "1", 0);
+        av_dict_set(&opts, "tcp_nodelay", "1", 0);
+        // these seem to do absolutely nothing useful
+        av_dict_set(&opts, "rw_timeout", "3500000", 0);
+        av_dict_set(&opts, "stimeout", "2000000", 0); // in secs
+        av_dict_set(&opts, "timeout", "2", 0); // in secs
+        // This works better over VPN interestingly enough
+        av_dict_set(&opts, "rtsp_transport", "tcp", 0);
+        av_dict_set(&opts, "rtsp_flags", "prefer_tcp", 0);
+
+		open_input_res = avformat_open_input(&format_context, "dummy", nullptr, &opts);
+		av_dict_free(&opts);
+	}else if  (!video_path.is_empty()){
+		avformat_network_init();
+		format_context = avformat_alloc_context();
+        format_context->flags |= AVFMT_FLAG_GENPTS | AVFMT_FLAG_NOBUFFER | AVFMT_FLAG_DISCARD_CORRUPT | AVFMT_FLAG_NONBLOCK; 
+		AVDictionary* opts = nullptr;
+		av_dict_set(&opts, "buffer_size", "655360", 0);
+		av_dict_set(&opts, "hwaccel", "auto", 0);
+		av_dict_set(&opts, "movflags", "faststart", 0);
+		av_dict_set(&opts, "refcounted_frames", "1", 0);
+
+        av_dict_set(&opts, "tcp_nodelay", "1", 0);
+        // these seem to do absolutely nothing useful
+        av_dict_set(&opts, "rw_timeout", "3500000", 0);
+        av_dict_set(&opts, "stimeout", "2000000", 0); // in secs
+        av_dict_set(&opts, "timeout", "2", 0); // in secs
+        // This works better over VPN interestingly enough
+        av_dict_set(&opts, "rtsp_transport", "tcp", 0);
+        av_dict_set(&opts, "rtsp_flags", "prefer_tcp", 0);
+        print_line("Trying to open url:", video_path.ascii().get_data());
+
+        format_context->interrupt_callback = int_cb;
+        format_context->interrupt_callback.opaque = &ok;
+        ms = duration_cast<milliseconds>(
+                system_clock::now().time_since_epoch())
+                     .count();
+        ok = false;
+		open_input_res = avformat_open_input(&format_context, video_path.utf8().get_data(), nullptr, &opts);
+		ok = true;
+		av_dict_free(&opts);
 	}
 
-	format_context = avformat_alloc_context();
-	format_context->pb = io_context;
-	format_context->flags |= AVFMT_FLAG_GENPTS;
-	format_context->video_codec = forced_video_codec;
-
-	int open_input_res = avformat_open_input(&format_context, "dummy", nullptr, nullptr);
 	input_opened = open_input_res >= 0;
 	ERR_FAIL_COND_MSG(!input_opened, vformat("Error opening file or stream: %s", ffmpeg_get_error_message(open_input_res)));
 
@@ -196,6 +275,8 @@ Error VideoDecoder::recreate_codec_context() {
 	video_codec_context = avcodec_alloc_context3(decoder);
 	video_codec_context->pkt_timebase = video_stream->time_base;
 
+	video_codec_context->flags |= AV_CODEC_FLAG_LOW_DELAY;
+	
 	ERR_FAIL_COND_V_MSG(video_codec_context == nullptr, FAILED, vformat("Couldn't allocate codec context: %s", decoder->name));
 
 	int param_copy_result = avcodec_parameters_to_context(video_codec_context, &codec_params);
@@ -265,7 +346,11 @@ void VideoDecoder::_thread_func(void *userdata) {
 				decoder->decoded_frames_mutex.lock();
 				bool needs_frame = decoder->decoded_frames.size() < MAX_PENDING_FRAMES;
 				decoder->decoded_frames_mutex.unlock();
-				if (needs_frame) {
+				decoder->audio_buffer_mutex.lock();
+				bool needs_audio_frame = decoder->decoded_audio_frames.size() < MAX_PENDING_FRAMES;
+				decoder->audio_buffer_mutex.unlock();
+
+				if (needs_frame||needs_audio_frame) {
 					FrameMarkStart(video_decoding);
 					decoder->_decode_next_frame(packet, receive_frame);
 					FrameMarkEnd(video_decoding);
@@ -492,7 +577,7 @@ void VideoDecoder::_read_decoded_audio_frames(AVFrame *p_received_frame) {
 
 		ERR_FAIL_COND_MSG(av_sample_fmt_is_planar((AVSampleFormat)frame->format), "Audio format should never be planar, bug?");
 
-		int data_size = av_samples_get_buffer_size(nullptr, frame->ch_layout.nb_channels, frame->nb_samples, (AVSampleFormat)frame->format, 0);
+		int data_size = av_samples_get_buffer_size(nullptr, frame->ch_layout.nb_channels, frame->nb_samples, (AVSampleFormat)frame->format, 1);
 		Ref<DecodedAudioFrame> audio_frame = memnew(DecodedAudioFrame(frame_time));
 		audio_frame->sample_data.resize(data_size / sizeof(float));
 		memcpy(audio_frame->sample_data.ptrw(), frame->data[0], data_size);
@@ -516,6 +601,24 @@ void VideoDecoder::_scaler_frame_return(Ref<FFmpegFrame> p_scaler_frame) {
 Ref<FFmpegFrame> VideoDecoder::_ensure_frame_pixel_format(Ref<FFmpegFrame> p_frame, AVPixelFormat p_target_pixel_format) {
 	ZoneScopedN("Video decoder rescale");
 
+    AVPixelFormat pixFormat;
+    switch (p_frame->get_frame()->format) {
+        case AV_PIX_FMT_YUVJ420P:
+            p_frame->get_frame()->format = AV_PIX_FMT_YUV420P;
+            break;
+        case AV_PIX_FMT_YUVJ422P:
+            p_frame->get_frame()->format = AV_PIX_FMT_YUV422P;
+            break;
+        case AV_PIX_FMT_YUVJ444P:
+            p_frame->get_frame()->format = AV_PIX_FMT_YUV444P;
+            break;
+        case AV_PIX_FMT_YUVJ440P:
+            p_frame->get_frame()->format = AV_PIX_FMT_YUV440P;
+            break;
+        default:
+            break;
+    }
+    
 	if (p_frame->get_frame()->format == p_target_pixel_format) {
 		return p_frame;
 	}
@@ -616,9 +719,15 @@ AVFrame *VideoDecoder::_ensure_frame_audio_format(AVFrame *p_frame, AVSampleForm
 		return p_frame;
 	}
 
+	AVChannelLayout outChannelLayout;
+	outChannelLayout.order = AV_CHANNEL_ORDER_NATIVE;
+	outChannelLayout.nb_channels= (2);
+	outChannelLayout.u.mask = { AV_CH_LAYOUT_STEREO };
+	outChannelLayout.opaque = NULL; 
+
 	int obtain_swr_ctx_result = swr_alloc_set_opts2(
 			&swr_context,
-			&audio_codec_context->ch_layout, p_target_audio_format, audio_codec_context->sample_rate,
+			&outChannelLayout, p_target_audio_format, audio_codec_context->sample_rate,
 			&audio_codec_context->ch_layout, audio_codec_context->sample_fmt, audio_codec_context->sample_rate,
 			0, nullptr);
 
@@ -630,7 +739,7 @@ AVFrame *VideoDecoder::_ensure_frame_audio_format(AVFrame *p_frame, AVSampleForm
 
 	out_frame = av_frame_alloc();
 	out_frame->format = p_target_audio_format;
-	out_frame->ch_layout = audio_codec_context->ch_layout;
+	out_frame->ch_layout = outChannelLayout;
 	out_frame->sample_rate = audio_codec_context->sample_rate;
 	out_frame->nb_samples = p_frame->nb_samples;
 
@@ -759,13 +868,18 @@ int VideoDecoder::get_audio_mix_rate() const {
 
 int VideoDecoder::get_audio_channel_count() const {
 	if (audio_stream) {
-		return audio_codec_context->ch_layout.nb_channels;
+		// return audio_codec_context->ch_layout.nb_channels;
+		return 2;
 	}
 	return 0;
 }
 
 VideoDecoder::VideoDecoder(Ref<FileAccess> p_file) {
 	video_file = p_file;
+}
+
+VideoDecoder::VideoDecoder(const String &p_path) {
+	video_path = p_path;
 }
 
 VideoDecoder::~VideoDecoder() {
@@ -830,10 +944,3 @@ Ref<Image> DecodedFrame::get_yuv_image_plane(int p_plane_idx) const {
 	return yuv_images[p_plane_idx];
 }
 
-double DecodedAudioFrame::get_time() const {
-	return time;
-}
-
-PackedFloat32Array DecodedAudioFrame::get_sample_data() const {
-	return sample_data;
-}
